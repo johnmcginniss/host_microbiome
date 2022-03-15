@@ -1,0 +1,141 @@
+---
+title: "host-microbiome"
+author: "John McGInniss"
+date: '2022-03-15'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+I'm interested in host-microbe interactions in the lung and how they influence lung health. Recently, our group performed a study looking at outcomes after lung transplant in relation to the lung  microbiome and inflammatory markers. A challenge was how to compare these two datasets.
+
+The microbiome data is from 16S amplicon sequencing and the inflammatory data is from a 41-plex Luminex assay. So for each sample we have both data. My initial analysis basically looked at both separately and how they related to health and disease post-transplant and then correlations between microbial taxa and the inflammatory mediators. 
+
+Inspired by my teams' work on agent based modeling, I wanted to take a modeling approach to the data which I think moves this in a more mechanistic direction. 
+
+First:
+1. Fit models to data
+2. Simulate models that have an increase, decrease, no change
+3. Compare actual models to simulated -- which best aligns?
+
+
+## Load Packages
+```{r packages}
+library(tidyverse)
+library(tidymodels)  # for the parsnip package, along with the rest of tidymodels
+
+# Helper packages
+library(readr)       # for importing data
+library(broom.mixed) # for converting bayesian models to tidy tibbles
+library(dotwhisker)  # for visualizing regression results
+library(rstanarm)
+library(skimr)
+```
+
+## Data
+
+
+```{r data}
+# My data
+microbiome_cytokine <- 
+  read_tsv("~/Desktop/host_microbiome/data/microbiome_cytokine.tsv")
+
+#DF with sample, top taxa and inflammatory markers
+
+glimpse(microbiome_cytokine)
+skim(microbiome_cytokine)
+
+```
+
+## EDA
+
+## Linear model set up
+```{r}
+lm_mod <- 
+  linear_reg() %>% 
+  set_engine("lm")
+
+# Fit the model to the data
+lm_fit <- 
+  lm_mod %>% 
+  fit(RANTES ~ Prevotella, data = microbiome_cytokine)
+lm_fit
+tidy(lm_fit) # wrapper to put model in tidy form
+
+# Take a look at model pars graphically
+tidy(lm_fit) %>% 
+  dwplot(dot_args = list(size = 2, color = "black"),
+         whisker_args = list(color = "black"),
+         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
+```
+## Add new points and predict
+```{r}
+new_points <- expand.grid(initial_volume = 20, 
+                          food_regime = c("Initial", "Low", "High"))
+new_points
+
+# use model to predict output with the new data
+mean_pred <- predict(lm_fit, new_data = new_points)
+mean_pred # output is the predicted mean body width based on the input values
+
+# Add CI's
+conf_int_pred <- predict(lm_fit, 
+                         new_data = new_points, 
+                         type = "conf_int")
+conf_int_pred
+
+# Now combine: 
+plot_data <- 
+  new_points %>% 
+  bind_cols(mean_pred) %>% 
+  bind_cols(conf_int_pred)
+
+# and plot:
+ggplot(plot_data, aes(x = food_regime)) + 
+  geom_point(aes(y = .pred)) + 
+  geom_errorbar(aes(ymin = .pred_lower, 
+                    ymax = .pred_upper),
+                width = .2) + 
+  labs(y = "urchin size")
+```
+## Bayesian modeling
+```{r}
+# set the prior distribution
+prior_dist <- rstanarm::student_t(df = 1) # Cauchy distribution with thick tails
+
+set.seed(123)
+
+# specify the parsnip model
+bayes_mod <-   
+  linear_reg() %>% 
+  set_engine("stan", 
+             prior_intercept = prior_dist, 
+             prior = prior_dist) 
+
+# train the model
+bayes_function <- function(x,y,data){
+  bayes_mod %>% 
+  fit(y ~ x, data = data)
+}
+
+print(bayes_fit, digits = 5)
+
+tidy(bayes_fit, conf.int = TRUE)
+
+# Plot output
+bayes_plot_data <- 
+  new_points %>% 
+  bind_cols(predict(bayes_fit, new_data = new_points)) %>% 
+  bind_cols(predict(bayes_fit, new_data = new_points, type = "conf_int"))
+
+ggplot(bayes_plot_data, aes(x = food_regime)) + 
+  geom_point(aes(y = .pred)) + 
+  geom_errorbar(aes(ymin = .pred_lower, ymax = .pred_upper), width = .2) + 
+  labs(y = "urchin size") + 
+  ggtitle("Bayesian model with t(1) prior distribution")
+```
+
