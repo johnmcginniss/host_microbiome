@@ -46,7 +46,26 @@ microbiome_cytokine <-
 #DF with sample, top taxa and inflammatory markers
 
 glimpse(microbiome_cytokine)
-skim(microbiome_cytokine)
+
+# Distribution of cytokines
+microbiome_cytokine %>% 
+  pivot_longer(cols = c(1:42), names_to = "variable", values_to = "value") %>% 
+  group_by(variable) %>% 
+  summarise(median = median(value), iqr25 = quantile(value, 0.25), iqr75 = quantile(value, 0.75)) %>% 
+  ggplot(., aes(x=reorder(variable, -median), y=median)) + 
+  geom_point() + 
+  geom_linerange(aes(ymin=iqr25, ymax=iqr75)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Distribution of taxa
+microbiome_cytokine %>% 
+  pivot_longer(cols = c(43:58), names_to = "variable", values_to = "value") %>% 
+  group_by(variable) %>% 
+  summarise(median = median(value), iqr25 = quantile(value, 0.25), iqr75 = quantile(value, 0.75)) %>% 
+  ggplot(., aes(x=reorder(variable, -median), y=median)) + 
+  geom_point() + 
+  geom_linerange(aes(ymin=iqr25, ymax=iqr75)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 # Correlation plot
 cor_df <- cor(scale(microbiome_cytokine), method = "spearman")
