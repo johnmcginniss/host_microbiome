@@ -38,7 +38,6 @@ library(skimr)
 
 ## Data
 
-
 ```{r data}
 # My data
 microbiome_cytokine <- 
@@ -49,9 +48,13 @@ microbiome_cytokine <-
 glimpse(microbiome_cytokine)
 skim(microbiome_cytokine)
 
-```
+# Correlation plot
+cor_df <- cor(scale(microbiome_cytokine), method = "spearman")
+corrplot::corrplot(cor_df)
 
-## EDA
+```
+Overall there are modest correlations between taxa and cytokines. Does a modeling approach confirm this?
+
 
 ## Bayesian modeling
 ```{r}
@@ -68,10 +71,8 @@ bayes_mod <-
              prior = prior_dist) 
 
 # train the model
-bayes_function <- function(x,y,data){
-  bayes_mod %>% 
-  fit(y ~ x, data = data)
-}
+bayes_fit <- bayes_mod %>% 
+  fit(TNFa ~ Prevotella, data = microbiome_cytokine)
 
 print(bayes_fit, digits = 5)
 
