@@ -21,8 +21,8 @@ Inspired by my teams' work on agent based modeling, I wanted to take a modeling 
 
 First:
 1. Take a look at the data
-2. Simulate models that have an increase, decrease, no change
-3. Compare actual models to simulated -- which best aligns?
+2. Simulate models with DSAIRM looking at bacterial-immune interactions
+3. Compare actual models to simulated to understand possible mechanistic link -- which best aligns? (open to suggestions here...)
 
 
 ## Load Packages
@@ -36,6 +36,9 @@ library(broom.mixed) # for converting bayesian models to tidy tibbles
 library(dotwhisker)  # for visualizing regression results
 library(rstanarm)
 library(skimr)
+
+# Main package of interest
+library('DSAIRM')
 ```
 
 ## Data
@@ -54,7 +57,7 @@ microbiome_cytokine %>%
   pivot_longer(cols = c(1:42), names_to = "variable", values_to = "value") %>% 
   group_by(variable) %>% 
   summarise(median = median(value), iqr25 = quantile(value, 0.25), iqr75 = quantile(value, 0.75)) %>% 
-  ggplot(., aes(x=reorder(variable, -median), y=median)) + 
+  ggplot(aes(x=reorder(variable, -median), y=median)) + 
   geom_point() + 
   geom_linerange(aes(ymin=iqr25, ymax=iqr75)) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
@@ -64,7 +67,8 @@ microbiome_cytokine %>%
   pivot_longer(cols = c(43:58), names_to = "variable", values_to = "value") %>% 
   group_by(variable) %>% 
   summarise(median = median(value), iqr25 = quantile(value, 0.25), iqr75 = quantile(value, 0.75)) %>% 
-  ggplot(., aes(x=reorder(variable, -median), y=median)) + 
+  ungroup() %>% 
+  ggplot(aes(x=reorder(variable, -median), y=median)) + 
   geom_point() + 
   geom_linerange(aes(ymin=iqr25, ymax=iqr75)) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
@@ -79,9 +83,14 @@ cor_df[1:41,43:58] > abs(0.2)
 
 Overall there are modest correlations between taxa and cytokines. Can a modeling approach help look at possible mechanistic links?
 
+Will turn to Dynamical Systems Approaches to Immune Response Modeling (DSAIRM).
+1. First will look at the GUI and examine model
+2. Then will tune some model parameters
+(3. Can also play with/adjust the underlying ODE compartmental models)
+
 # DSAIRM
 ```{r}
-library('DSAIRM')
+
 dsairmmenu()
 help('simulate_basicbacteria_ode')
 
@@ -107,7 +116,6 @@ result_plot <- result_plot %>%
 
 ggplot(result_plot, aes(x=time, y=Amount, color=Agent)) + geom_point()
 ```
-
 
 ## Modify the immune response for a given bacterial load
 
