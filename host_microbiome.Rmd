@@ -76,8 +76,163 @@ corrplot::corrplot(cor_df)
 ```
 Overall there are modest correlations between taxa and cytokines. Does a modeling approach confirm this?
 
+# DSAIRM
+```{r}
+library('DSAIRM')
+dsairmmenu()
+help('simulate_basicbacteria_ode')
 
-## Bayesian modeling
+# Bacterial-immune default model
+result <- simulate_basicbacteria_ode(
+  B = 100,      # starting value bacteria
+  I = 1,        # starting value for immune response
+  g = 1,        # maximum rate of bacterial growth
+  Bmax = 1e+05, # bacterial carrying capacity
+  dB = 0.5,     # bacterial death rate
+  k = 1e-04,    # rate of bacteria killed by immune response
+  r = 1e-04,    # immune response growth rate
+  dI = 2,       # immune response decay rate
+  tstart = 0,   # start time of simulation
+  tfinal = 100, # final time of simulation
+  dt = 0.01     # times which result returned
+)
+
+result_plot <- result$ts
+
+result_plot <- result_plot %>% 
+  pivot_longer(cols = c(2:3), names_to = "Agent", values_to = "Amount")
+
+ggplot(result_plot, aes(x=time, y=Amount, color=Agent)) + geom_point()
+```
+
+
+## Modify the immune response for a given bacterial load
+
+```{r}
+# Bacterial-immune low activation model
+result_low <- simulate_basicbacteria_ode(
+  B = 100,      # starting value bacteria
+  I = 1,        # starting value for immune response
+  g = 1,        # maximum rate of bacterial growth
+  Bmax = 1e+05, # bacterial carrying capacity
+  dB = 0.5,     # bacterial death rate
+  k = 1e-04,    # rate of bacteria killed by immune response
+  r = 1e-05,    # low immune response growth rate
+  dI = 2,       # immune response decay rate
+  tstart = 0,   # start time of simulation
+  tfinal = 100, # final time of simulation
+  dt = 0.01     # times which result returned
+)
+
+result_low_plot <- result_low$ts
+
+result_low_plot <- result_low_plot %>% 
+  pivot_longer(cols = c(2:3), names_to = "Agent", values_to = "Amount") %>% 
+  ggplot(., aes(x=time, y=Amount, color=Agent)) + 
+  geom_point()
+
+# Bacterial-immune mid activation model
+result_mid <- simulate_basicbacteria_ode(
+  B = 100,      # starting value bacteria
+  I = 1,        # starting value for immune response
+  g = 1,        # maximum rate of bacterial growth
+  Bmax = 1e+05, # bacterial carrying capacity
+  dB = 0.5,     # bacterial death rate
+  k = 1e-04,    # rate of bacteria killed by immune response
+  r = 3e-04,    # low immune response growth rate
+  dI = 2,       # immune response decay rate
+  tstart = 0,   # start time of simulation
+  tfinal = 100, # final time of simulation
+  dt = 0.01     # times which result returned
+)
+
+result_mid_plot <- result_mid$ts
+
+result_mid_plot <- result_mid_plot %>% 
+  pivot_longer(cols = c(2:3), names_to = "Agent", values_to = "Amount") %>% 
+  ggplot(., aes(x=time, y=Amount, color=Agent)) + 
+  geom_point()
+
+# Bacterial-immune high activation model
+result_high <- simulate_basicbacteria_ode(
+  B = 100,      # starting value bacteria
+  I = 1,        # starting value for immune response
+  g = 1,        # maximum rate of bacterial growth
+  Bmax = 1e+05, # bacterial carrying capacity
+  dB = 0.5,     # bacterial death rate
+  k = 1e-04,    # rate of bacteria killed by immune response
+  r = 1e-03,    # low immune response growth rate
+  dI = 2,       # immune response decay rate
+  tstart = 0,   # start time of simulation
+  tfinal = 100, # final time of simulation
+  dt = 0.01     # times which result returned
+)
+
+result_high_plot <- result_high$ts
+
+result_high_plot <- result_high_plot %>% 
+  pivot_longer(cols = c(2:3), names_to = "Agent", values_to = "Amount") %>% 
+  ggplot(., aes(x=time, y=Amount, color=Agent)) + 
+  geom_point()
+```
+
+# Supply a vector for immune activation rate, capture max B and I
+```{r}
+#values for immune activation rate, r, for which to run the simulation
+rvec <- 10^seq(-5,-2,length=20)  
+
+#this variable will hold the peak values for each r
+Bpeak <- rep(0,length(rvec))
+Ipeak <- rep(0,length(rvec))
+for (n in 1:length(rvec))   
+{
+  #run the simulation model for different values of r 
+  #for simplicity, all other inputs are kept at their defaults
+  result <- simulate_basicbacteria_ode(r = rvec[n])
+  #record max number of bacteria for each value of r
+  Bpeak[n] <- max(result$ts[,"B"])
+  Ipeak[n] <- max(result$ts[,"I"])
+}
+#plot final result
+rvec_sim <- cbind(rvec, Ipeak, Bpeak)
+
+plot(Bpeak, Ipeak)
+plot(Bpeak/5000, log10(Ipeak))
+
+# Make some adjustments to approximate data type
+rvec_sim_adj <- cbind(rvec, Ipeak_log10 = log10(Ipeak+1e-5), Bpeak_rel_abd = (Bpeak/50000))
+
+```
+
+## Fit curve to the simulated data
+
+```{r}
+#fit polynomial regression models up to degree 5
+fit1 <- lm(Ipeak_log10~Bpeak_rel_abd, data=df)
+fit2 <- lm(Ipeak_log10~poly(Bpeak_rel_abd,2,raw=TRUE), data=rvec_sim_adj)
+fit3 <- lm(Ipeak_log10~poly(Bpeak_rel_abd,3,raw=TRUE), data=rvec_sim_adj)
+fit4 <- lm(Ipeak_log10~poly(Bpeak_rel_abd,4,raw=TRUE), data=rvec_sim_adj)
+fit5 <- lm(Ipeak_log10~poly(Bpeak_rel_abd,5,raw=TRUE), data=rvec_sim_adj)
+
+#create a scatterplot of x vs. y
+plot(rvec_sim_adj$Bpeak_rel_abd, rvec_sim_adj$Ipeak_log10, pch=19, xlab='Bacterial burden', ylab='Peak immune response')
+
+#define x-axis values
+x_axis <- seq(1, 15, length=15)
+
+#add curve of each model to plot
+lines(x_axis, predict(fit1, data.frame(x=x_axis)), col='green')
+lines(x_axis, predict(fit2, data.frame(x=x_axis)), col='red')
+lines(x_axis, predict(fit3, data.frame(x=x_axis)), col='purple')
+lines(x_axis, predict(fit4, data.frame(x=x_axis)), col='blue')
+lines(x_axis, predict(fit5, data.frame(x=x_axis)), col='orange')
+```
+
+
+## Compare to observed data
+
+
+# Bayesian modeling
 ```{r}
 # Simulate scenario of positive correlation, negative, neutral
 
@@ -87,9 +242,10 @@ microbiome_cytokine %>%
   ggplot(., aes(Rel_abd)) + geom_histogram()
   
 
-x1 <- rnbinom(10000, mu = 5, 1) / 100 # Generate independent variable based on rel abd
-hist(x1)
-error <- rnorm(10000,0,50) / 100
+x1 <- rnbinom(111, mu = 5, 1) / 100 # Generate independent variable based on rel abd
+x1 <- x1 %>% as_tibble_col(column_name = "Rel_abd")
+hist(x1$Rel_abd)
+error <- rnorm(111,0,50) / 100
 hist(error)
 
 #Generate the dependent variable
@@ -99,87 +255,73 @@ microbiome_cytokine %>%
   summarize(mean = mean(Log10), sd = sd(Log10))
 
 # Simulated models of positive, neg, and neutral relationship.
-y_positive <- 3.9 + (1.5*x1) + error
-#plot(x1, y_positive)
-y_negative <- 3.9 - (1.5*x1) + error
-#plot(x1, y_negative)
+y_positive <- 3.9 + (5*x1) + error
+y_positive <- y_positive %>% as_tibble_col(column_name = "Log10_pos")
+
+y_negative <- 3.9 - (5*x1) + error
+y_negative <- y_negative %>% as_tibble_col(column_name = "Log10_neg")
+
 y_neutral <- 3.9 - (0*x1) + error
-#plot(x1, y_neutral)
+y_neutral <- y_neutral %>% as_tibble_col(column_name = "Log10_neut")
+
+# Put data together
+simulated_data <- cbind(y_positive$Log10_pos,  y_neutral$Log10_neut, y_negative$Log10_neg, x1$Rel_abd)
+
+colnames(simulated_data) <- c("Log10_pos", "Log10_neut", "Log10_neg", "Rel_abd")
 
 #Create the simulated models
-#Set the prior distribution
-prior_dist <- rstanarm::student_t(df = 1) # Cauchy distribution with thick tails
-set.seed(123)
-
-#Specify the parsnip model
-
-bayes_mod <-   
-  linear_reg() %>% 
-  set_engine("stan", 
-             prior_intercept = prior_dist, 
-             prior = prior_dist) 
-
 # Positive model
-bayes_xy_fit_positive <- 
-  bayes_mod %>% 
-  fit_xy(
-    x = x1 %>% as_tibble_col(column_name = "Rel_abd"),
-    y = y_positive %>% as_tibble_col(column_name = "Log10")
-  )
-# Positive output
-print(bayes_xy_fit_positive, digits = 5)
-tidy(bayes_xy_fit_positive, conf.int = TRUE)
+bayes_positive <- stan_lm(Log10_pos ~ Rel_abd,
+        data = simulated_data,
+        prior = R2(what = "mean", location = 0.5),
+        seed=123)
+
+summary(bayes_positive)
 
 # Negative model
-bayes_xy_fit_negative <- 
-  bayes_mod %>% 
-  fit_xy(
-    x = x1 %>% as_tibble_col(column_name = "Rel_abd"),
-    y = y_negative %>% as_tibble_col(column_name = "Log10")
-  )
+bayes_negative <- stan_lm(Log10_neg ~ Rel_abd,
+        data = simulated_data,
+        prior = R2(what = "mean", location = 0.5),
+        seed=123)
 
-# Negative output
-print(bayes_xy_fit_positive, digits = 5)
-tidy(bayes_xy_fit_positive, conf.int = TRUE)
+summary(bayes_negative)
 
-bayes_xy_fit_neutral <- 
-  bayes_mod %>% 
-  fit_xy(
-    x = x1 %>% as_tibble_col(column_name = "Rel_abd"),
-    y = y_neutral %>% as_tibble_col(column_name = "Log10")
-  )
+# Neutral model
+bayes_neutral <- stan_lm(Log10_neut ~ Rel_abd,
+        data = simulated_data,
+        prior = R2(what = "mean", location = 0.5),
+        seed=123)
 
-# train the model for the rest of variables
-bayes_xy_fit <- 
-  bayes_mod %>% 
-  fit_xy(
-    x = microbiome_cytokine %>% select(Prevotella),
-    y = microbiome_cytokine %>% pull(TNFa)
-  )
+summary(bayes_neutral)
 
-print(bayes_xy_fit, digits = 5)
-
-tidy(bayes_xy_fit, conf.int = TRUE)
-
-loo_compare(bayes_xy_fit, bayes_xy_fit_negative)
-
-# Plot output
-bayes_plot_data <- 
-  new_points %>% 
-  bind_cols(predict(bayes_fit, new_data = new_points)) %>% 
-  bind_cols(predict(bayes_fit, new_data = new_points, type = "conf_int"))
-
-ggplot(bayes_plot_data, aes(x = food_regime)) + 
-  geom_point(aes(y = .pred)) + 
-  geom_errorbar(aes(ymin = .pred_lower, ymax = .pred_upper), width = .2) + 
-  labs(y = "urchin size") + 
-  ggtitle("Bayesian model with t(1) prior distribution")
 ```
 
-
-# DSAIRM
+# Model each variable
 ```{r}
-library('DSAIRM')
-dsairmmenu()
+# train the model for the rest of variables
+bayes_1 <- stan_lm(IL1a ~ Prevotella,
+        data = microbiome_cytokine,
+        prior = R2(what = "mean", location = 0.5),
+        seed=123)
+
+
+## Function for rest of variables ##
+
 ```
+
+
+```{r}
+# Compare models with LOO
+loo_1 <- loo(bayes_1, cores = 2)
+loo_negative <- loo(bayes_negative, cores = 2)
+loo_positive <- loo(bayes_positive, cores = 2)
+loo_neutral <- loo(bayes_neutral, cores = 2)
+
+loo_compare(loo_1, loo_negative, loo_positive, loo_neutral)
+
+
+```
+
+
+
 
