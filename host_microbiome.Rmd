@@ -130,4 +130,9 @@ tidy(lm_fit) %>%
          vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
 ```
 
+# DSAIRM
+```{r}
+library('DSAIRM')
+dsairmmenu()
+```
 
