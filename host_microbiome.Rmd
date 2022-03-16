@@ -73,8 +73,11 @@ microbiome_cytokine %>%
 cor_df <- cor(scale(microbiome_cytokine), method = "spearman")
 corrplot::corrplot(cor_df)
 
+cor_df[1:41,43:58] > abs(0.2)
+
 ```
-Overall there are modest correlations between taxa and cytokines. Does a modeling approach confirm this?
+
+Overall there are modest correlations between taxa and cytokines. Can a modeling approach help look at possible mechanistic links?
 
 # DSAIRM
 ```{r}
@@ -203,6 +206,24 @@ plot(Bpeak/5000, log10(Ipeak))
 rvec_sim_adj <- cbind(rvec, Ipeak_log10 = log10(Ipeak+1e-5), Bpeak_rel_abd = (Bpeak/50000))
 
 ```
+
+# Fit linear models to the data suggested by correlations
+```{r}
+Vars <- as.list(colnames(microbiome_cytokine[,43:58])) # Create list of taxa
+
+Outcomes <- as.list(colnames(microbiome_cytokine[,1:41])) # List of cytokines
+
+allModelsList <- lapply(paste(Outcomes, " ~ ", Vars), as.formula)
+
+allModelsResults <- lapply(allModelsList, function(x) lm(x, data = microbiome_cytokine))
+
+allModelsSummaries <- lapply(allModelsResults, summary)
+
+for (i in Outcomes){
+  lapply(paste(Outcomes[i], " ~ ", Vars), as.formula)
+}
+```
+
 
 ## Fit curve to the simulated data
 
