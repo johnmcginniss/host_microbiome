@@ -3,6 +3,8 @@ title: "host-microbiome"
 author: "John McGInniss"
 date: '2022-03-15'
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -13,12 +15,12 @@ knitr::opts_chunk$set(echo = TRUE)
 
 I'm interested in host-microbe interactions in the lung and how they influence lung health. Recently, our group performed a study looking at outcomes after lung transplant in relation to the lung  microbiome and inflammatory markers. A challenge was how to compare these two datasets.
 
-The microbiome data is from 16S amplicon sequencing and the inflammatory data is from a 41-plex Luminex assay. So for each sample we have both data. My initial analysis basically looked at both separately and how they related to health and disease post-transplant and then correlations between microbial taxa and the inflammatory mediators. 
+The samples are from the lung in the hour after lung transplantation. The microbiome data is from 16S amplicon sequencing and the inflammatory data is from a 41-plex Luminex assay. So for each sample we have both data. My initial analysis basically looked at both separately and how they related to health and disease post-transplant and then correlations between microbial taxa and the inflammatory mediators. 
 
 Inspired by my teams' work on agent based modeling, I wanted to take a modeling approach to the data which I think moves this in a more mechanistic direction. 
 
 First:
-1. Fit models to data
+1. Take a look at the data
 2. Simulate models that have an increase, decrease, no change
 3. Compare actual models to simulated -- which best aligns?
 
@@ -77,25 +79,89 @@ Overall there are modest correlations between taxa and cytokines. Does a modelin
 
 ## Bayesian modeling
 ```{r}
-# set the prior distribution
-prior_dist <- rstanarm::student_t(df = 1) # Cauchy distribution with thick tails
+# Simulate scenario of positive correlation, negative, neutral
 
+microbiome_cytokine %>% 
+  select(43:58) %>% # select the taxa
+  pivot_longer(cols = c(1:16), names_to = "Taxa", values_to = "Rel_abd") %>% 
+  ggplot(., aes(Rel_abd)) + geom_histogram()
+  
+
+x1 <- rnbinom(10000, mu = 5, 1) / 100 # Generate independent variable based on rel abd
+hist(x1)
+error <- rnorm(10000,0,50) / 100
+hist(error)
+
+#Generate the dependent variable
+microbiome_cytokine %>% 
+  select(1:41) %>% # select the taxa
+  pivot_longer(cols = c(1:41), names_to = "Cytokine", values_to = "Log10") %>% 
+  summarize(mean = mean(Log10), sd = sd(Log10))
+
+# Simulated models of positive, neg, and neutral relationship.
+y_positive <- 3.9 + (1.5*x1) + error
+#plot(x1, y_positive)
+y_negative <- 3.9 - (1.5*x1) + error
+#plot(x1, y_negative)
+y_neutral <- 3.9 - (0*x1) + error
+#plot(x1, y_neutral)
+
+#Create the simulated models
+#Set the prior distribution
+prior_dist <- rstanarm::student_t(df = 1) # Cauchy distribution with thick tails
 set.seed(123)
 
-# specify the parsnip model
+#Specify the parsnip model
+
 bayes_mod <-   
   linear_reg() %>% 
   set_engine("stan", 
              prior_intercept = prior_dist, 
              prior = prior_dist) 
 
-# train the model
-bayes_fit <- bayes_mod %>% 
-  fit(TNFa ~ Prevotella, data = microbiome_cytokine)
+# Positive model
+bayes_xy_fit_positive <- 
+  bayes_mod %>% 
+  fit_xy(
+    x = x1 %>% as_tibble_col(column_name = "Rel_abd"),
+    y = y_positive %>% as_tibble_col(column_name = "Log10")
+  )
+# Positive output
+print(bayes_xy_fit_positive, digits = 5)
+tidy(bayes_xy_fit_positive, conf.int = TRUE)
 
-print(bayes_fit, digits = 5)
+# Negative model
+bayes_xy_fit_negative <- 
+  bayes_mod %>% 
+  fit_xy(
+    x = x1 %>% as_tibble_col(column_name = "Rel_abd"),
+    y = y_negative %>% as_tibble_col(column_name = "Log10")
+  )
 
-tidy(bayes_fit, conf.int = TRUE)
+# Negative output
+print(bayes_xy_fit_positive, digits = 5)
+tidy(bayes_xy_fit_positive, conf.int = TRUE)
+
+bayes_xy_fit_neutral <- 
+  bayes_mod %>% 
+  fit_xy(
+    x = x1 %>% as_tibble_col(column_name = "Rel_abd"),
+    y = y_neutral %>% as_tibble_col(column_name = "Log10")
+  )
+
+# train the model for the rest of variables
+bayes_xy_fit <- 
+  bayes_mod %>% 
+  fit_xy(
+    x = microbiome_cytokine %>% select(Prevotella),
+    y = microbiome_cytokine %>% pull(TNFa)
+  )
+
+print(bayes_xy_fit, digits = 5)
+
+tidy(bayes_xy_fit, conf.int = TRUE)
+
+loo_compare(bayes_xy_fit, bayes_xy_fit_negative)
 
 # Plot output
 bayes_plot_data <- 
@@ -110,25 +176,6 @@ ggplot(bayes_plot_data, aes(x = food_regime)) +
   ggtitle("Bayesian model with t(1) prior distribution")
 ```
 
-## Simulation models
-```{r}
-lm_mod <- 
-  linear_reg() %>% 
-  set_engine("lm")
-
-# Fit the model to the data
-lm_fit <- 
-  lm_mod %>% 
-  fit(RANTES ~ Prevotella, data = microbiome_cytokine)
-lm_fit
-tidy(lm_fit) # wrapper to put model in tidy form
-
-# Take a look at model pars graphically
-tidy(lm_fit) %>% 
-  dwplot(dot_args = list(size = 2, color = "black"),
-         whisker_args = list(color = "black"),
-         vline = geom_vline(xintercept = 0, colour = "grey50", linetype = 2))
-```
 
 # DSAIRM
 ```{r}
